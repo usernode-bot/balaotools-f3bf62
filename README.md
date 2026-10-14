@@ -1,27 +1,46 @@
 # BalaoTools
 
-> **Starter template** — this repo was scaffolded by Homeroom Social
-> Vibecoding. Everything in it is placeholder example code until the
-> app's first real feature is built.
+Turn an image into vector files the group can download. Pick a PNG, JPEG,
+WebP or GIF (up to 30 MB); the app traces it into coloured shapes on its
+own server, shows the original and the traced vector side by side, and
+offers the result as **SVG** and **EPS**, named after the image.
 
-The scaffold is a small working demo that proves the plumbing works:
+## How it works
 
-- **Sign-in** — the server verifies the platform-issued user token
-  (an RS256 JWT) on every request, so the app already knows who is
-  using it. No accounts to build.
-- **Database** — the app has its own private Postgres database, ready
-  to store things.
-- **Styling** — Tailwind CSS, precompiled by `npm run build` during
-  image creation with either Kubernetes/Paketo or standalone Docker, in a
-  light and a dark look that follow the viewer's Homeroom theme.
+- **Tracing** runs on the server: `sharp` decodes the upload (EXIF
+  rotation applied, long edge capped at 2400 px), then `imagetracerjs`
+  (up to 24 colours) runs in a worker thread, one trace at a time per
+  process (a second upload from the same user gets a `busy` answer while
+  one is running). A trace that takes longer than five minutes is
+  stopped; finished results are kept for fifteen minutes and then
+  dropped.
+- **Downloads** are built from the traced shapes by `lib/vector.js`:
+  SVG paths with `fill-rule="evenodd"`, and an EPSF-3.0 PostScript file
+  with the same shapes (quadratic curves become cubic ones).
+- **The recent list** (last 12 conversions) lives on this device in
+  IndexedDB — nothing about your images is stored server-side beyond the
+  fifteen-minute result cache.
+- **Staging demo**: `/?demo=1` shows six sample conversions with the
+  demo note above the list. `server.js` injects the samples into the
+  page itself while `IS_STAGING` (production never sees the route);
+  nothing is stored and nothing ships in the production HTML.
 
-## Replacing the template
+## Layout
 
-To change this app, ask Homeroom bot: open the app on Homeroom, tap the
-Homeroom icon in the header, then **Suggest an improvement**, and describe
-the app you want in plain English. The template will be replaced with your
-real app. You can also run
-Claude Code against this repo directly; start with `CLAUDE.md`, which
-carries the app-specific notes and points at the platform rules.
+- `public/index.html` — the one screen; `public/app.js` wires it
+- `server.js` — auth, upload/trace/poll API, demo route
+- `lib/vector.js` — tracedata → SVG/EPS writers; `lib/trace-worker.js` —
+  the tracing worker; `lib/demo.js` — the staging demo shapes
+- `styles/tailwind-input.css` + `tailwind.config.js` — the design kit
+  (`npm run build` compiles `public/tailwind.css`)
 
-Once the real app exists, rewrite this README to describe it.
+## Tests
+
+`npm test` runs the SVG/EPS writer tests (`test/vector.test.js`).
+The screens in `dapp.json` are checked by the platform.
+
+Both declared checks set `allowConsoleErrors`: the centrally hosted
+bridge looks up `api/public/app-host?host=<the host>` on the platform,
+and for the loopback host the local checks run against that lookup gets
+a 404 from the platform. On real staging and production hosts the
+lookup resolves and the pages load with no console errors.

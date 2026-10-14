@@ -95,24 +95,29 @@ tables you've marked private), etc.
 
 ## About BalaoTools
 
-Turn images into vector files the group can download
-
-_(add a sentence or two more of product context here so Claude Code has a
-shared understanding of what this app is for)_
+Turn images into vector files the group can download. One screen: pick an
+image (PNG/JPEG/WebP/GIF, up to 30 MB), the server traces it into coloured
+shapes (sharp + imagetracerjs, up to 24 colours, one trace at a time, five
+minute cap), and the result downloads as SVG and EPS named after the
+image. The last 12 conversions are kept on-device in IndexedDB — there is
+no server-side image storage, only a fifteen-minute in-memory result
+cache. `/?demo=1` (staging only) shows six sample conversions from
+`lib/demo.js`.
 
 ## Design
 
 This app's look. The first real version fills in the blanks; every later
 change follows it, and updates it when a request changes the look on purpose.
 
-- **Palette:** _(name the accent, any second colour and the neutrals, e.g.
-  "accent: tomato red; second: basil green; neutrals: warm greys")_
-- **Signature element:** _(the one thing on screen drawn from this app's
-  subject, which no other app would have)_
+- **Palette:** selection blue (light `29 78 216`, dark `125 165 255`) as
+  the accent, over cool greys; the checkerboard (`--check`) sits behind
+  the vector pane only.
+- **Signature element:** the side-by-side compare — the original on a
+  pixel grid, the vector on a checkerboard with blue anchor-point squares
+  along its paths (the toggleable overlay); the tracing state draws the
+  same dashes.
 - **Type scale:** `text-title`, `text-heading`, `text-body`, `text-small`
   _(change their sizes in `tailwind.config.js` if you must, not their number)_
-- **One fixed look:** _(only for an app drawn as its own scene, such as a
-  game: which look, and why. Otherwise delete this line.)_
 
 The kit is in `styles/tailwind-input.css`: colour tokens with a light and
 a dark value (named in `tailwind.config.js`), and a few components
