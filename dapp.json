@@ -8,8 +8,14 @@
       "id": "main",
       "name": "Main screen",
       "path": "/",
-      "viewport": { "width": 390, "height": 844 },
-      "impact": ["public/**", "styles/**"],
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "impact": [
+        "public/**",
+        "styles/**"
+      ],
       "expectSelector": "#choose-image",
       "expectText": "Choose an image to trace",
       "allowConsoleErrors": true
@@ -19,8 +25,14 @@
       "name": "Staging demo screen",
       "path": "/?demo=1",
       "visual": true,
-      "viewport": { "width": 390, "height": 844 },
-      "impact": ["public/**", "styles/**"],
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "impact": [
+        "public/**",
+        "styles/**"
+      ],
       "expectText": "balloon-logo.png",
       "allowConsoleErrors": true
     }
@@ -28,5 +40,9 @@
   "secrets": [],
   "governance": {
     "preset": "you_or_the_group"
+  },
+  "visibility": {
+    "build": "public",
+    "view": "public"
   }
 }
