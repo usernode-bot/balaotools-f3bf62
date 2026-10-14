@@ -133,6 +133,18 @@ header {display:flex;flex-direction:column;gap:2px;padding:0 4px}
 
 .downloads {display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
+/* Download confirmation: a quiet pill at the bottom of the screen, shown for
+   a couple of seconds after a file starts saving. */
+.toast {
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+  max-width:calc(100vw - 32px);z-index:20;
+  background:rgb(var(--surface));border:1px solid rgb(var(--line));
+  color:rgb(var(--fg));border-radius:999px;padding:10px 16px;
+  font-size:14px;line-height:20px;
+  box-shadow:0 4px 16px rgb(var(--fg)/.15);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
 .section-label {margin-bottom:8px;padding:0 4px;font-size:14px;line-height:20px;font-weight:500;color:rgb(var(--muted))}
 
 .demo-note {margin-bottom:8px;padding:0 4px}

@@ -32,6 +32,7 @@
     downloads: $('downloads'),
     dlSvg: $('dl-svg'),
     dlEps: $('dl-eps'),
+    toast: $('toast'),
     demoNote: $('demo-note'),
     recentList: $('recent-list'),
     rowTpl: $('row-tpl'),
@@ -399,7 +400,37 @@
     return filename.replace(/\.[a-z0-9]+$/i, '') || 'vector';
   }
 
-  function download(text, type, filename) {
+  // Saving a file gives no signal of its own inside the frame, so confirm it:
+  // a short toast names the file, and the tapped button's icon shows a check
+  // for two seconds. Only the main download buttons carry an icon; the list
+  // rows' SVG/EPS buttons get the toast alone.
+  let toastTimer = null;
+  let iconTimer = null;
+  const flashedPaths = new Set();
+
+  function showToast(message) {
+    el.toast.textContent = message;
+    el.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.toast.hidden = true; }, 2000);
+  }
+
+  function flashCheck(btn) {
+    const path = btn.querySelector('svg path');
+    if (!path) return;
+    for (const p of flashedPaths) p.setAttribute('d', p.dataset.orig);
+    flashedPaths.clear();
+    path.dataset.orig = path.getAttribute('d');
+    path.setAttribute('d', 'M5 13L10 18L19 7');
+    flashedPaths.add(path);
+    clearTimeout(iconTimer);
+    iconTimer = setTimeout(() => {
+      for (const p of flashedPaths) p.setAttribute('d', p.dataset.orig);
+      flashedPaths.clear();
+    }, 2000);
+  }
+
+  function download(text, type, filename, btn) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type }));
     a.download = filename;
@@ -407,13 +438,15 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast(filename + ' downloaded');
+    if (btn) flashCheck(btn);
   }
 
   el.dlSvg.addEventListener('click', () => {
-    if (current && current.svg) download(current.svg, 'image/svg+xml', baseName(current.filename) + '.svg');
+    if (current && current.svg) download(current.svg, 'image/svg+xml', baseName(current.filename) + '.svg', el.dlSvg);
   });
   el.dlEps.addEventListener('click', () => {
-    if (current && current.eps) download(current.eps, 'application/postscript', baseName(current.filename) + '.eps');
+    if (current && current.eps) download(current.eps, 'application/postscript', baseName(current.filename) + '.eps', el.dlEps);
   });
 
   // ── The recent list, on this device ──────────────────────────────────────
@@ -575,10 +608,10 @@
     meta.appendChild(document.createTextNode(whenLabel(item.createdAt)));
     const [svgBtn, epsBtn] = row.querySelectorAll('.fmt button');
     svgBtn.addEventListener('click', () => {
-      if (item.svg) download(item.svg, 'image/svg+xml', baseName(item.filename) + '.svg');
+      if (item.svg) download(item.svg, 'image/svg+xml', baseName(item.filename) + '.svg', svgBtn);
     });
     epsBtn.addEventListener('click', () => {
-      if (item.eps) download(item.eps, 'application/postscript', baseName(item.filename) + '.eps');
+      if (item.eps) download(item.eps, 'application/postscript', baseName(item.filename) + '.eps', epsBtn);
     });
     // Tapping the row (not the download buttons) opens it in the viewer.
     row.addEventListener('click', (e) => {
