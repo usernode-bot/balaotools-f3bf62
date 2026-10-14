@@ -1,0 +1,10 @@
+{
+  "description": "Turn images into vector files the group can download",
+  "icon": {
+    "emoji": "🖼️"
+  },
+  "secrets": [],
+  "governance": {
+    "preset": "you_or_the_group"
+  }
+}
