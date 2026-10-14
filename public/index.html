@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+
   <script>
   // usernode-dev-console@1
   (function () {
@@ -27,7 +27,7 @@
             seen.add(val);
           }
           if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
-          if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+          if (val instanceof Error) return val.stack || val.name + ': ' + val.message;
           return val;
         });
       } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
@@ -109,160 +109,104 @@
   </script>
 </head>
 <body class="min-h-screen bg-ground text-fg">
-  <!-- Built from the design kit in styles/tailwind-input.css: colour tokens
-       that are right in both looks, and components for buttons, fields,
-       lists, cards and data states. The real app keeps the kit; CLAUDE.md's
-       "## Design" says how. -->
-  <!-- (Named in prose on purpose: Tailwind compiles any class-name word in
-       these files, comments included, and the starter should ship only the
-       components its screen uses.) -->
-  <!-- usernode-spec-screens@1: the screens the spec drew, carried over by the platform as this
-       first version's starting point. Their styles are in public/screens.css.
-       Change them where behaviour needs it; do not redraw them. -->
-  <div data-spec-screen="1">
-    <div>
-    <div class="app">
+  <!-- The one screen, built from the two the spec drew: screen 1's structure
+       (header, file card, side-by-side compare, anchor switch, downloads,
+       recent list) carries the ready state, screen 2's tracing pane and
+       status block carry the while-tracing state. Drawn values are empty:
+       public/app.js fills them from what actually happens. -->
+  <div>
+    <div class="app" id="app" data-state="empty">
       <header>
         <h1 class="text-title">BalaoTools</h1>
         <p class="text-small muted">Turn an image into SVG and EPS vector files.</p>
       </header>
 
-      <div class="card file">
-        <div class="thumb"><svg viewBox="0 0 160 160" width="44" height="44"><rect width="160" height="160" fill="#BFE3F5"/><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z" fill="#E4483B"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z" fill="#F6C945"/><rect x="70" y="132" width="20" height="14" rx="2" fill="#8A5A34"/></svg></div>
+      <!-- Empty state: the dropzone. -->
+      <div class="dropzone" id="choose-image" role="button" tabindex="0"
+           aria-label="Choose an image to trace">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15L8 10L13 15"/><circle cx="15.5" cy="8.5" r="1.5"/><path d="M13 15L17 11L21 15"/></svg>
+        <p class="text-body" style="font-weight:500">Choose an image to trace</p>
+        <p class="text-small muted">PNG, JPEG, WebP or GIF, up to 30 MB. Drop it here or pick a file.</p>
+        <span class="btn-primary">Choose image</span>
+      </div>
+      <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+
+      <!-- The chosen file. -->
+      <div class="card file" id="file-card" hidden>
+        <div class="thumb" id="file-thumb" aria-hidden="true"></div>
         <div class="grow">
-          <p class="text-body ellip" style="font-weight:500">balloon-logo.png</p>
-          <p class="text-small muted num">1200 × 1200 px, 248 KB</p>
+          <p class="text-body ellip" style="font-weight:500" id="file-name"></p>
+          <p class="text-small muted num" id="file-meta"></p>
         </div>
-        <button class="btn-secondary btn-sm">Change image</button>
+        <button class="btn-secondary btn-sm" id="change-image">Change image</button>
       </div>
 
       <div class="compare">
         <div class="pane">
-          <div class="pane-label"><span class="text-small" style="font-weight:500">Original</span><span class="text-small muted">PNG</span></div>
+          <div class="pane-label"><span class="text-small" style="font-weight:500">Original</span><span class="text-small muted" id="orig-meta"></span></div>
           <div class="art">
-            <svg viewBox="0 0 160 160"><rect width="160" height="160" fill="#BFE3F5"/><path d="M28 140C28 130 38 126 46 128C50 120 64 120 68 130C76 128 82 134 80 140Z" fill="#FFFFFF"/><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z" fill="#E4483B"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z" fill="#F6C945"/><path d="M70 120L72 132M90 120L88 132" stroke="#5B3A22" stroke-width="2"/><rect x="70" y="132" width="20" height="14" rx="2" fill="#8A5A34"/></svg>
-            <div class="pixels"></div>
+            <div id="orig-art"></div>
+            <div class="pixels" aria-hidden="true"></div>
           </div>
         </div>
         <div class="pane">
-          <div class="pane-label"><span class="text-small" style="font-weight:500;color:rgb(var(--accent))">Vector</span><span class="text-small muted num">18 shapes</span></div>
-          <div class="art vec">
-            <svg viewBox="0 0 160 160"><rect width="160" height="160" fill="#BFE3F5"/><path d="M28 140C28 130 38 126 46 128C50 120 64 120 68 130C76 128 82 134 80 140Z" fill="#FFFFFF"/><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z" fill="#E4483B"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z" fill="#F6C945"/><path d="M70 120L72 132M90 120L88 132" stroke="#5B3A22" stroke-width="2"/><rect x="70" y="132" width="20" height="14" rx="2" fill="#8A5A34"/>
-            <g fill="none" stroke="rgb(29 78 216)" stroke-width="1"><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z"/><path d="M48 18H112M30 48V84M130 48V84" stroke-opacity=".55"/></g>
-            <g fill="#FFFFFF" stroke="rgb(29 78 216)" stroke-width="1.25"><rect x="77" y="15" width="6" height="6"/><rect x="27" y="63" width="6" height="6"/><rect x="127" y="63" width="6" height="6"/><rect x="55" y="63" width="6" height="6"/><rect x="99" y="63" width="6" height="6"/><rect x="67" y="117" width="6" height="6"/><rect x="87" y="117" width="6" height="6"/><circle cx="48" cy="18" r="2.5"/><circle cx="112" cy="18" r="2.5"/><circle cx="30" cy="48" r="2.5"/><circle cx="130" cy="84" r="2.5"/></g></svg>
+          <div class="pane-label"><span class="text-small" style="font-weight:500;color:rgb(var(--accent))">Vector</span><span class="text-small muted num" id="vec-meta"></span></div>
+          <div class="art vec" id="vec-box">
+            <div id="vec-art"></div>
+            <!-- Screen 2's tracing pane: the vector taking shape. -->
+            <div class="trace-overlay" id="trace-overlay" aria-hidden="true">
+              <svg viewBox="0 0 160 160"><g fill="none" style="stroke:rgb(var(--accent))" stroke-width="1.5" stroke-linecap="round"><path class="dash" d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z"/><path class="dash" d="M80 18C66 18 58 42 58 66C58 80 62 92 80 92" stroke-dasharray="3 4"/></g><g fill="#FFFFFF" style="stroke:rgb(var(--accent))" stroke-width="1.25"><rect x="77" y="15" width="6" height="6"/><rect x="27" y="63" width="6" height="6"/><rect x="67" y="117" width="6" height="6"/><rect x="87" y="117" width="6" height="6"/><rect x="127" y="89" width="6" height="6" style="fill:rgb(var(--accent))"/></g></svg>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="opts">
-        <svg class="ico" viewBox="0 0 24 24" style="color:rgb(var(--accent))"><path d="M4 18C8 6 16 6 20 18"/><rect x="2" y="16" width="4" height="4"/><rect x="18" y="16" width="4" height="4"/><path d="M12 9V4"/><circle cx="12" cy="3" r="1"/></svg>
-        <span class="text-body grow">Show anchor points</span>
-        <span class="switch" role="switch" aria-checked="true"></span>
+      <!-- Screen 2's status block, shown while tracing. -->
+      <div class="status" id="trace-status" role="status" hidden>
+        <div class="bar"><span></span></div>
+        <p class="text-body" style="font-weight:500">Tracing your image</p>
+        <p class="text-small muted">Large images can take up to a minute. You can keep this screen open; the downloads appear here when the vector is ready.</p>
       </div>
 
-      <div class="downloads">
-        <button class="btn-primary"><svg class="ico" viewBox="0 0 24 24"><path d="M12 4V15M7 10L12 15L17 10M5 20H19"/></svg>Download SVG</button>
-        <button class="btn-secondary"><svg class="ico" viewBox="0 0 24 24"><path d="M12 4V15M7 10L12 15L17 10M5 20H19"/></svg>Download EPS</button>
+      <div class="state-error" id="error-state" hidden>
+        <p class="text-body" style="font-weight:500" id="error-title">Couldn't trace that image</p>
+        <p class="text-small muted" id="error-text"></p>
+        <div class="error-actions">
+          <button class="btn-secondary btn-sm" id="try-again">Try again</button>
+          <button class="btn-secondary btn-sm" id="error-change">Change image</button>
+        </div>
+      </div>
+
+      <div class="opts" id="opts-row" hidden>
+        <svg class="ico" viewBox="0 0 24 24" style="color:rgb(var(--accent))" aria-hidden="true"><path d="M4 18C8 6 16 6 20 18"/><rect x="2" y="16" width="4" height="4"/><rect x="18" y="16" width="4" height="4"/><path d="M12 9V4"/><circle cx="12" cy="3" r="1"/></svg>
+        <span class="text-body grow">Show anchor points</span>
+        <button class="switch" id="anchor-switch" role="switch" aria-checked="true" aria-label="Show anchor points"></button>
+      </div>
+
+      <div class="downloads" id="downloads" hidden>
+        <button class="btn-primary" id="dl-svg"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V15M7 10L12 15L17 10M5 20H19"/></svg>Download SVG</button>
+        <button class="btn-secondary" id="dl-eps"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V15M7 10L12 15L17 10M5 20H19"/></svg>Download EPS</button>
       </div>
 
       <section>
         <h2 class="section-label">Your recent conversions</h2>
-        <ul class="list">
-          <li class="list-row current">
-            <div class="thumb"><svg viewBox="0 0 160 160" width="40" height="40"><rect width="160" height="160" fill="#BFE3F5"/><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z" fill="#E4483B"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z" fill="#F6C945"/><rect x="70" y="132" width="20" height="14" rx="2" fill="#8A5A34"/></svg></div>
-            <div class="grow"><p class="text-body ellip">balloon-logo.png</p><p class="text-small muted num"><span class="tag">Open now</span> Today, 09:12</p></div>
-            <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-          </li>
+        <p class="text-small muted demo-note" id="demo-note" hidden>Staging demo: the conversions below are sample files.</p>
+        <ul class="list" id="recent-list"></ul>
+        <template id="row-tpl">
           <li class="list-row">
-            <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M10 16H28V26C28 31 24 34 19 34C14 34 10 31 10 26Z" fill="#6B4430"/><path d="M28 19H31C33 19 33 25 31 25H28" fill="none" stroke="#6B4430" stroke-width="2.5"/><path d="M15 12C15 9 18 9 18 6M21 12C21 9 24 9 24 6" fill="none" stroke="#B8A99A" stroke-width="2" stroke-linecap="round"/></svg></div>
-            <div class="grow"><p class="text-body ellip">kopi-cup-sketch.jpg</p><p class="text-small muted num">Today, 08:40</p></div>
-            <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
+            <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true"></svg></div>
+            <div class="grow"><p class="text-body ellip"></p><p class="text-small muted num"></p></div>
+            <div class="fmt"><button class="btn-secondary btn-sm" data-fmt="svg">SVG</button><button class="btn-secondary btn-sm" data-fmt="eps">EPS</button></div>
           </li>
-          <li class="list-row">
-            <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M8 32C8 16 18 8 33 7C33 22 25 32 8 32Z" fill="#3E9B5F"/><path d="M8 32L24 16" stroke="#1F5E36" stroke-width="2" stroke-linecap="round"/></svg></div>
-            <div class="grow"><p class="text-body ellip">leaf-stamp.png</p><p class="text-small muted num">Yesterday, 16:05</p></div>
-            <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-          </li>
-          <li class="list-row">
-            <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="15" fill="#1D3B6E"/><path d="M20 10L23 17L30 17.5L24.5 22L26.5 29L20 25L13.5 29L15.5 22L10 17.5L17 17Z" fill="#F6C945"/></svg></div>
-            <div class="grow"><p class="text-body ellip">star-badge-v2.png</p><p class="text-small muted num">Yesterday, 11:30</p></div>
-            <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-          </li>
-          <li class="list-row">
-            <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M4 18C10 12 14 24 20 18C26 12 30 24 36 18V36H4Z" fill="#2A8FB8"/><path d="M4 26C10 20 14 32 20 26C26 20 30 32 36 26V36H4Z" fill="#17607F"/></svg></div>
-            <div class="grow"><p class="text-body ellip">wave-pattern.jpg</p><p class="text-small muted num">12 Oct, 19:48</p></div>
-            <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-          </li>
-          <li class="list-row">
-            <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M10 34V18L8 8L15 14H25L32 8L30 18V34Z" fill="#F2A541"/><circle cx="16" cy="22" r="2" fill="#2B2B2B"/><circle cx="24" cy="22" r="2" fill="#2B2B2B"/></svg></div>
-            <div class="grow"><p class="text-body ellip">cat-doodle.png</p><p class="text-small muted num">10 Oct, 14:22</p></div>
-            <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-          </li>
-        </ul>
+        </template>
+        <div class="state-empty" id="recent-empty" hidden>
+          <p class="text-body" style="font-weight:500">Nothing traced yet</p>
+          <p class="text-small muted">Your last 12 conversions stay here, on this device.</p>
+        </div>
+        <p class="text-small muted" id="recent-unavailable" hidden>Your recent conversions can't be kept on this device, so the list starts empty every time.</p>
       </section>
     </div>
-    </div>
   </div>
-  <!-- Screen 2 as the spec drew it: inert until moved where that view belongs. -->
-  <template data-spec-screen="2">
-    <div data-spec-screen="2">
-      <div>
-      <div class="app">
-        <header>
-          <h1 class="text-title">BalaoTools</h1>
-          <p class="text-small muted">Turn an image into SVG and EPS vector files.</p>
-        </header>
-
-        <div class="card file">
-          <div class="thumb"><svg viewBox="0 0 160 160" width="44" height="44"><rect width="160" height="160" fill="#BFE3F5"/><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z" fill="#E4483B"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z" fill="#F6C945"/><rect x="70" y="132" width="20" height="14" rx="2" fill="#8A5A34"/></svg></div>
-          <div class="grow">
-            <p class="text-body ellip" style="font-weight:500">balloon-logo.png</p>
-            <p class="text-small muted num">1200 × 1200 px, 248 KB</p>
-          </div>
-          <button class="btn-secondary btn-sm" disabled style="opacity:.5">Change image</button>
-        </div>
-
-        <div class="compare">
-          <div class="pane">
-            <div class="pane-label"><span class="text-small" style="font-weight:500">Original</span><span class="text-small muted">PNG</span></div>
-            <div class="art">
-              <svg viewBox="0 0 160 160"><rect width="160" height="160" fill="#BFE3F5"/><path d="M28 140C28 130 38 126 46 128C50 120 64 120 68 130C76 128 82 134 80 140Z" fill="#FFFFFF"/><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92 130 66C130 42 112 18 80 18Z" fill="#E4483B"/><path d="M80 18C66 18 58 42 58 66C58 92 70 108 74 120H86C90 108 102 92 102 66C102 42 94 18 80 18Z" fill="#F6C945"/><path d="M70 120L72 132M90 120L88 132" stroke="#5B3A22" stroke-width="2"/><rect x="70" y="132" width="20" height="14" rx="2" fill="#8A5A34"/></svg>
-              <div class="pixels"></div>
-            </div>
-          </div>
-          <div class="pane">
-            <div class="pane-label"><span class="text-small" style="font-weight:500;color:rgb(var(--accent))">Vector</span><span class="text-small muted">Tracing</span></div>
-            <div class="art tracing">
-              <svg viewBox="0 0 160 160"><g fill="none" stroke="rgb(29 78 216)" stroke-width="1.5" stroke-linecap="round"><path d="M80 18C48 18 30 42 30 66C30 92 56 108 70 120H90C104 108 130 92"/><path d="M80 18C66 18 58 42 58 66C58 80 62 92" stroke-dasharray="3 4"/></g><g fill="#FFFFFF" stroke="rgb(29 78 216)" stroke-width="1.25"><rect x="77" y="15" width="6" height="6"/><rect x="27" y="63" width="6" height="6"/><rect x="67" y="117" width="6" height="6"/><rect x="87" y="117" width="6" height="6"/><rect x="127" y="89" width="6" height="6" fill="rgb(29 78 216)"/></g></svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="status" role="status">
-          <div class="bar"><span></span></div>
-          <p class="text-body" style="font-weight:500">Tracing your image</p>
-          <p class="text-small muted">Large images can take up to a minute. You can keep this screen open; the downloads appear here when the vector is ready.</p>
-        </div>
-
-        <section>
-          <h2 class="section-label">Your recent conversions</h2>
-          <ul class="list">
-            <li class="list-row">
-              <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M10 16H28V26C28 31 24 34 19 34C14 34 10 31 10 26Z" fill="#6B4430"/><path d="M28 19H31C33 19 33 25 31 25H28" fill="none" stroke="#6B4430" stroke-width="2.5"/><path d="M15 12C15 9 18 9 18 6M21 12C21 9 24 9 24 6" fill="none" stroke="#B8A99A" stroke-width="2" stroke-linecap="round"/></svg></div>
-              <div class="grow"><p class="text-body ellip">kopi-cup-sketch.jpg</p><p class="text-small muted num">Today, 08:40</p></div>
-              <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-            </li>
-            <li class="list-row">
-              <div class="thumb"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M8 32C8 16 18 8 33 7C33 22 25 32 8 32Z" fill="#3E9B5F"/><path d="M8 32L24 16" stroke="#1F5E36" stroke-width="2" stroke-linecap="round"/></svg></div>
-              <div class="grow"><p class="text-body ellip">leaf-stamp.png</p><p class="text-small muted num">Yesterday, 16:05</p></div>
-              <div class="fmt"><button class="btn-secondary btn-sm">SVG</button><button class="btn-secondary btn-sm">EPS</button></div>
-            </li>
-          </ul>
-        </section>
-      </div>
-      </div>
-    </div>
-  </template>
-  <!-- /usernode-spec-screens@1 -->
+  <script src="/app.js" defer></script>
 </body>
 </html>

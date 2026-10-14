@@ -35,25 +35,26 @@
     --fg: 17 24 39;           /* text */
     --muted: 75 85 99;        /* secondary text */
     --line: 222 226 232;      /* borders, dividers, skeletons */
-    --accent: 29 78 216;     /* the one accent */
+    --accent: 29 78 216;      /* the one accent */
     --on-accent: 255 255 255; /* text on the accent */
     --danger: 185 28 28;
     --on-danger: 255 255 255;
-    --focus: 13 148 136;      /* the keyboard focus ring */
-    --check: 232 235 240; /* from the spec's screens */
+    --focus: 37 99 235;       /* the keyboard focus ring */
+    --check: 232 235 240;     /* the checkerboard behind the vector */
   }
   .dark {
-    --ground: 12 10 9;
-    --surface: 28 25 23;
-    --raised: 41 37 36;
-    --fg: 245 245 244;
-    --muted: 168 162 158;
-    --line: 68 64 60;
-    --accent: 45 212 191;
-    --on-accent: 4 47 46;
+    --ground: 13 15 20;
+    --surface: 24 27 34;
+    --raised: 36 40 49;
+    --fg: 241 243 246;
+    --muted: 160 168 180;
+    --line: 52 58 70;
+    --accent: 125 165 255;
+    --on-accent: 10 20 50;
     --danger: 248 113 113;
     --on-danger: 69 10 10;
-    --focus: 94 234 212;
+    --focus: 147 187 255;
+    --check: 34 38 46;
   }
   /* el.hidden = true hides an element even when a class gives it a display
      (flex, the components below). */

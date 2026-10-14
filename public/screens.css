@@ -10,7 +10,7 @@
 }
 
 .app {
-  min-height: 1210px;
+  min-height: 100vh;
   background: rgb(var(--ground));
   color: rgb(var(--fg));
   font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -40,6 +40,10 @@ header {display:flex;flex-direction:column;gap:2px;padding:0 4px}
 
 .thumb {width:44px;height:44px;border-radius:8px;border:1px solid rgb(var(--line));background:rgb(var(--raised));flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center}
 
+.thumb svg,.thumb img {display:block;width:100%;height:100%}
+
+.thumb img {object-fit:cover}
+
 .grow {flex:1;min-width:0}
 
 .ellip {white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -48,9 +52,34 @@ header {display:flex;flex-direction:column;gap:2px;padding:0 4px}
 
 .btn-primary {background:rgb(var(--accent));color:rgb(var(--on-accent));border:0}
 
+.btn-primary:hover {filter:brightness(.95)}
+
 .btn-secondary {border:1px solid rgb(var(--line));background:rgb(var(--surface));color:rgb(var(--fg))}
 
+.btn-secondary:hover {background:rgb(var(--raised))}
+
 .btn-sm {padding:0 10px;font-size:14px}
+
+:where(.btn-primary,.btn-secondary,.switch,.dropzone):focus-visible {outline:2px solid rgb(var(--focus));outline-offset:2px}
+
+/* The empty state: the drawn file card has no drawn empty look, so the
+   dropzone takes its place while nothing is chosen. */
+.dropzone {
+  display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
+  padding:36px 16px;border:2px dashed rgb(var(--accent)/.5);border-radius:12px;
+  background:rgb(var(--surface));cursor:pointer;
+}
+
+.dropzone .ico {width:36px;height:36px;color:rgb(var(--accent));fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:6px}
+
+.dropzone:hover {border-color:rgb(var(--accent))}
+
+.dropzone.drag {border-color:rgb(var(--accent));background:rgb(var(--accent)/.06)}
+
+/* On wide frames the screen stays a phone-shaped column, centred. */
+@media (min-width: 760px) {
+  .app {max-width: 720px;margin: 0 auto}
+}
 
 .compare {display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
@@ -60,23 +89,53 @@ header {display:flex;flex-direction:column;gap:2px;padding:0 4px}
 
 .art {aspect-ratio:1/1;border-radius:10px;border:1px solid rgb(var(--line));overflow:hidden;position:relative;background-color:rgb(var(--surface));background-image:linear-gradient(45deg,rgb(var(--check)) 25%,transparent 25%,transparent 75%,rgb(var(--check)) 75%),linear-gradient(45deg,rgb(var(--check)) 25%,transparent 25%,transparent 75%,rgb(var(--check)) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
 
-.art svg {display:block;width:100%;height:100%}
+.art > div {width:100%;height:100%}
 
-.pixels {position:absolute;inset:0;background-image:linear-gradient(rgb(var(--surface)/.35) 1px,transparent 1px),linear-gradient(90deg,rgb(var(--surface)/.35) 1px,transparent 1px);background-size:6px 6px}
+.art svg,.art img {display:block;width:100%;height:100%}
+
+.art img {object-fit:contain}
+
+.pixels {position:absolute;inset:0;background-image:linear-gradient(rgb(var(--surface)/.35) 1px,transparent 1px),linear-gradient(90deg,rgb(var(--surface)/.35) 1px,transparent 1px);background-size:6px 6px;pointer-events:none}
 
 .vec {border-color:rgb(var(--accent)/.5)}
 
+/* Screen 2: its rules the first screen has not got. */
+
+.tracing, .trace-overlay {border-style:dashed}
+
+.trace-overlay {position:absolute;inset:0;pointer-events:none}
+
+.trace-overlay svg {display:block;width:100%;height:100%}
+
+.trace-overlay .dash {stroke-dasharray:3 4}
+
+.status {display:flex;flex-direction:column;gap:10px;padding:0 4px}
+
+.bar {height:6px;border-radius:999px;background:rgb(var(--line));overflow:hidden}
+
+.bar span {display:block;height:100%;width:62%;background:rgb(var(--accent));border-radius:999px}
+
+.state-error {border:1px solid rgb(var(--danger)/.4);border-radius:12px;background:rgb(var(--surface));padding:24px 16px}
+
+.state-error .error-actions {display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;justify-content:center}
+
 .row-between {display:flex;align-items:center;justify-content:space-between;gap:12px}
 
-.switch {width:51px;height:31px;border-radius:999px;background:rgb(var(--accent));position:relative;flex:none}
+.switch {width:51px;height:31px;border-radius:999px;background:rgb(var(--accent));position:relative;flex:none;border:0;cursor:pointer;-webkit-appearance:none;appearance:none}
 
-.switch::after {content:"";position:absolute;top:2px;right:2px;width:27px;height:27px;border-radius:50%;background:rgb(var(--surface))}
+.switch::after {content:"";position:absolute;top:2px;right:2px;width:27px;height:27px;border-radius:50%;background:rgb(var(--surface));transition:right .15s ease}
+
+.switch[aria-checked="false"] {background:rgb(var(--muted))}
+
+.switch[aria-checked="false"]::after {right:22px}
 
 .opts {display:flex;align-items:center;gap:12px;min-height:44px;padding:0 4px}
 
 .downloads {display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
 .section-label {margin-bottom:8px;padding:0 4px;font-size:14px;line-height:20px;font-weight:500;color:rgb(var(--muted))}
+
+.demo-note {margin-bottom:8px;padding:0 4px}
 
 .list {list-style:none;border:1px solid rgb(var(--line));border-radius:12px;background:rgb(var(--surface));overflow:hidden}
 
@@ -94,29 +153,19 @@ header {display:flex;flex-direction:column;gap:2px;padding:0 4px}
 
 .ico {width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 
-/* Screen 2: its rules the first screen has not got. */
-
-.app {
-  min-height: 844px;
-  background: rgb(var(--ground));
-  color: rgb(var(--fg));
-  font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  padding: 20px 16px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+/* Motion only where it answers the work being done: the tracing dashes and
+   the status bar move while a trace runs, and neither moves under reduced
+   motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .trace-overlay .dash {animation:dash-draw 1.2s linear infinite}
+  @keyframes dash-draw {to {stroke-dashoffset:-14}}
+  .bar span {animation:bar-slide 1.6s ease-in-out infinite}
+  @keyframes bar-slide {
+    0% {transform:translateX(-70%)}
+    100% {transform:translateX(170%)}
+  }
+  .switch::after {transition:right .15s ease}
 }
-
-.thumb {width:44px;height:44px;border-radius:8px;border:1px solid rgb(var(--line));flex:none;overflow:hidden}
-
-.tracing {border-style:dashed;border-color:rgb(var(--accent)/.6);background:rgb(var(--surface))}
-
-.status {display:flex;flex-direction:column;gap:10px;padding:0 4px}
-
-.bar {height:6px;border-radius:999px;background:rgb(var(--line));overflow:hidden}
-
-.bar span {display:block;height:100%;width:62%;background:rgb(var(--accent));border-radius:999px}
-
-.skeleton {border-radius:6px;background:rgb(var(--line))}
-
-.list-row .thumb {width:40px;height:40px}
+@media (prefers-reduced-motion: reduce) {
+  .bar span {width:100%}
+}

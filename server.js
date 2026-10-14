@@ -1,7 +1,13 @@
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { Worker } = require('worker_threads');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const sharp = require('sharp');
+const { toSvg, toEps, countShapes } = require('./lib/vector');
+const { demoConversions } = require('./lib/demo');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -145,6 +151,217 @@ app.use((req, res, next) => {
   next();
 });
 
+// ---------------------------------------------------------------------------
+// Image tracing. An upload is decoded with sharp immediately, then traced in
+// a worker thread (the tracer is synchronous and can take minutes), one at a
+// time, FIFO. Results live in memory, belong to the user who uploaded them,
+// and expire.
+// ---------------------------------------------------------------------------
+
+const MAX_UPLOAD = 30 * 1024 * 1024; // 30 MB
+const TRACE_COLORS = 24; // the palette the tracer quantises down to
+const TRACE_TIMEOUT_MS = 5 * 60 * 1000; // give up on a stuck trace
+const RESULT_TTL_MS = 15 * 60 * 1000; // ready results expire after this
+const TRACE_OPTIONS = {
+  numberofcolors: TRACE_COLORS,
+  ltres: 1,
+  qtres: 1,
+  pathomit: 8,
+  colorsampling: 2,
+  blursize: 0,
+  rightangleenhance: true,
+};
+
+const jobs = new Map(); // id -> job
+const queue = []; // job ids waiting for the single worker slot
+
+// sharp's raw pixel output -> ImageTracer's imagedata (flat RGBA).
+function toImagedata(buffer, width, height) {
+  return { width, height, data: new Uint8Array(buffer) };
+}
+
+// The trace dims and the display dims differ twice over: EXIF rotation can
+// swap the axes, and the long side is capped at 2400 before tracing.
+async function decode(body) {
+  const meta = await sharp(body).metadata();
+  const swap = meta.orientation >= 5 && meta.orientation <= 8;
+  const outW = swap ? meta.height : meta.width;
+  const outH = swap ? meta.width : meta.height;
+  const { data, info } = await sharp(body)
+    .rotate()
+    .resize(2400, 2400, { fit: 'inside', withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return {
+    imagedata: toImagedata(data, info.width, info.height),
+    traceW: info.width,
+    traceH: info.height,
+    outW,
+    outH,
+  };
+}
+
+let running = null; // the job being traced right now, if any
+
+function finishJob(job, patch) {
+  clearTimeout(job.timer);
+  job.worker = null;
+  Object.assign(job, patch);
+  job.imagedata = null; // pixels are only needed while tracing
+  if (running === job) running = null;
+  pump();
+}
+
+function pump() {
+  if (running) return;
+  const nextId = queue.shift();
+  if (!nextId) return;
+  const job = jobs.get(nextId);
+  if (!job || job.status !== 'queued') return pump();
+  running = job;
+  job.status = 'tracing';
+  const worker = new Worker(path.join(__dirname, 'lib', 'trace-worker.js'));
+  job.worker = worker;
+  job.timer = setTimeout(() => {
+    // The tracer is synchronous inside the worker: a stuck one never answers,
+    // so the only way out is to kill the thread.
+    finishJob(job, { status: 'failed', error: 'timeout' });
+    worker.terminate();
+  }, TRACE_TIMEOUT_MS);
+  worker.on('message', (msg) => {
+    if (msg.error) return finishJob(job, { status: 'failed', error: 'trace_failed' });
+    try {
+      const svg = toSvg(msg.shapes, job.traceW, job.traceH, job.outW, job.outH);
+      const eps = toEps(msg.shapes, job.traceW, job.traceH, job.outW, job.outH, job.title);
+      finishJob(job, {
+        status: 'ready',
+        svg,
+        eps,
+        shapes: countShapes(msg.shapes),
+        failedShapeless: countShapes(msg.shapes) === 0,
+      });
+    } catch {
+      finishJob(job, { status: 'failed', error: 'trace_failed' });
+    }
+  });
+  worker.on('error', () => finishJob(job, { status: 'failed', error: 'trace_failed' }));
+  worker.on('exit', () => {
+    // A worker that exits without a message (crash, timeout kill) fails its
+    // job, unless the timeout or a message already resolved it.
+    if (job.worker === worker && job.status === 'tracing') {
+      finishJob(job, { status: 'failed', error: 'trace_failed' });
+    }
+  });
+  worker.postMessage({
+    imagedata: job.imagedata,
+    options: TRACE_OPTIONS,
+  });
+}
+
+// Ready (and failed) results are transient: sweep the old ones every minute.
+const sweeper = setInterval(() => {
+  const cutoff = Date.now() - RESULT_TTL_MS;
+  for (const [id, job] of jobs) {
+    if (job.status !== 'queued' && job.status !== 'tracing' &&
+        job.finishedAt && job.finishedAt < cutoff) {
+      jobs.delete(id);
+    }
+  }
+}, 60 * 1000);
+sweeper.unref();
+
+// Upload: decode now (fast), queue the expensive trace, answer 202. The
+// client polls GET /api/trace/:id from here on. Only the raw bytes are
+// accepted, so the JSON parser above never sees this body.
+app.post('/api/trace', express.raw({ type: 'application/octet-stream', limit: MAX_UPLOAD }), async (req, res) => {
+  const ctype = req.headers['content-type'] || '';
+  if (!ctype.startsWith('application/octet-stream')) {
+    return res.status(415).json({ error: 'unsupported_type' });
+  }
+  if (!req.body || !req.body.length) {
+    return res.status(400).json({ error: 'no_file' });
+  }
+  // One trace at a time per user: a second upload while one is queued or
+  // tracing is answered 409, so nobody piles up minutes-long jobs.
+  const userId = req.user ? req.user.id : null;
+  for (const job of jobs.values()) {
+    if (job.userId === userId && (job.status === 'queued' || job.status === 'tracing')) {
+      return res.status(409).json({ error: 'busy' });
+    }
+  }
+  let decoded;
+  try {
+    decoded = await decode(req.body);
+  } catch {
+    return res.status(415).json({ error: 'unsupported_format' });
+  }
+  const job = {
+    id: crypto.randomUUID(),
+    userId,
+    title: String(req.query.name || 'vector').slice(0, 80).replace(/[\r\n%]/g, ' '),
+    status: 'queued',
+    createdAt: req.now,
+    finishedAt: null,
+    imagedata: decoded.imagedata,
+    traceW: decoded.traceW,
+    traceH: decoded.traceH,
+    outW: decoded.outW,
+    outH: decoded.outH,
+    svg: null,
+    eps: null,
+    shapes: 0,
+    error: null,
+    worker: null,
+    timer: null,
+  };
+  jobs.set(job.id, job);
+  queue.push(job.id);
+  pump();
+  return res.status(202).json({ id: job.id });
+});
+
+app.get('/api/trace/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  // Someone else's job is nobody's job: 404, never its contents.
+  if (!job || job.userId !== (req.user ? req.user.id : null)) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  if (job.status === 'queued') {
+    return res.json({ status: 'queued', position: queue.indexOf(job.id) + 1 });
+  }
+  if (job.status === 'tracing') return res.json({ status: 'tracing' });
+  job.finishedAt = job.finishedAt || Date.now();
+  if (job.status === 'failed') {
+    return res.json({ status: 'failed', error: job.error || 'failed' });
+  }
+  return res.json({
+    status: 'ready',
+    svg: job.svg,
+    eps: job.eps,
+    width: job.outW,
+    height: job.outH,
+    shapes: job.shapes,
+  });
+});
+
+// The staging demo: six hand-drawn samples injected at request time, only on
+// staging and only when the page asks for them (?demo=1). Nothing is stored.
+// The samples ride in the page itself (window.USERNODE_DEMO), so the demo
+// screen renders the same for signed-out check and preview loads as for
+// signed-in ones — no API round-trip, and nothing in production sees this.
+app.get('/', (req, res, next) => {
+  if (!IS_STAGING || req.query.demo !== '1') return next();
+  const shell = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+  // `<` escaped so a closing script tag inside a sample could never end the
+  // bootstrap early.
+  const demo = JSON.stringify(demoConversions(req.now)).replace(/</g, '\\u003c');
+  const boot = '<script>window.USERNODE_DEMO=' + demo + ';</script>';
+  const withDemo = shell.replace('<script src="/app.js" defer></script>',
+    boot + '\n  <script src="/app.js" defer></script>');
+  return res.send(withDemo);
+});
+
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // The template ships no favicon file; index.html carries an inline SVG
@@ -191,10 +408,43 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Body-parser errors (an oversized upload is the expected one here) mapped
+// to the codes the client knows; everything else is logged and kept generic.
+app.use((err, req, res, _next) => {
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'too_large' });
+  }
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  console.error(err);
+  return res.status(500).json({ error: 'internal' });
+});
+
 async function start() {
   const server = app.listen(port, () => console.log(`Listening on :${port}`));
   // Let Envoy retire idle upstream connections at 60s, with a 15s margin.
   server.keepAliveTimeout = 75_000;
+
+  // The platform stops the container with SIGTERM: close the listener and
+  // stop any running trace, then leave (the queue is memory-only by design).
+  let stopping = false;
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    console.log('Shutting down');
+    server.close(() => process.exit(0));
+    for (const job of jobs.values()) {
+      if (job.worker) {
+        clearTimeout(job.timer);
+        job.worker.terminate();
+      }
+    }
+    setTimeout(() => process.exit(0), 3000).unref();
+  };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+  return server;
 }
 
 start().catch(err => { console.error(err); process.exit(1); });

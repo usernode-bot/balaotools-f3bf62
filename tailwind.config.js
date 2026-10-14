@@ -43,6 +43,9 @@ module.exports = {
   // and keep these names.
   theme: {
     extend: {
+      fontFamily: {
+        sans: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+      },
       colors: {
         ground: token('ground'), // the page
         surface: token('surface'), // lists, cards, fields
@@ -55,6 +58,7 @@ module.exports = {
         danger: token('danger'),
         'on-danger': token('on-danger'),
         focus: token('focus'), // the keyboard focus ring
+        check: token('check'), // the checkerboard behind the vector
       },
       // The type scale: four sizes, and nothing in between.
       fontSize: {
