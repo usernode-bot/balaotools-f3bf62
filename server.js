@@ -5,8 +5,8 @@ const crypto = require('crypto');
 const { Worker } = require('worker_threads');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
-const sharp = require('sharp');
 const { toSvg, toEps, countShapes } = require('./lib/vector');
+const { TRACE_OPTIONS, decode } = require('./lib/prepare');
 const { demoConversions } = require('./lib/demo');
 
 const app = express();
@@ -159,48 +159,15 @@ app.use((req, res, next) => {
 // ---------------------------------------------------------------------------
 
 const MAX_UPLOAD = 30 * 1024 * 1024; // 30 MB
-const TRACE_COLORS = 24; // the palette the tracer quantises down to
 const TRACE_TIMEOUT_MS = 5 * 60 * 1000; // give up on a stuck trace
 const RESULT_TTL_MS = 15 * 60 * 1000; // ready results expire after this
-const TRACE_OPTIONS = {
-  numberofcolors: TRACE_COLORS,
-  ltres: 1,
-  qtres: 1,
-  pathomit: 8,
-  colorsampling: 2,
-  blursize: 0,
-  rightangleenhance: true,
-};
+
+// TRACE_OPTIONS and decode() (the tuned tracer options and the sharp
+// preprocessing) live in lib/prepare.js so the tests can reach them
+// without starting the server.
 
 const jobs = new Map(); // id -> job
 const queue = []; // job ids waiting for the single worker slot
-
-// sharp's raw pixel output -> ImageTracer's imagedata (flat RGBA).
-function toImagedata(buffer, width, height) {
-  return { width, height, data: new Uint8Array(buffer) };
-}
-
-// The trace dims and the display dims differ twice over: EXIF rotation can
-// swap the axes, and the long side is capped at 2400 before tracing.
-async function decode(body) {
-  const meta = await sharp(body).metadata();
-  const swap = meta.orientation >= 5 && meta.orientation <= 8;
-  const outW = swap ? meta.height : meta.width;
-  const outH = swap ? meta.width : meta.height;
-  const { data, info } = await sharp(body)
-    .rotate()
-    .resize(2400, 2400, { fit: 'inside', withoutEnlargement: true })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  return {
-    imagedata: toImagedata(data, info.width, info.height),
-    traceW: info.width,
-    traceH: info.height,
-    outW,
-    outH,
-  };
-}
 
 let running = null; // the job being traced right now, if any
 
