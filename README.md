@@ -8,12 +8,13 @@ offers the result as **SVG** and **EPS**, named after the image.
 ## How it works
 
 - **Tracing** runs on the server: `sharp` decodes the upload (EXIF
-  rotation applied, long edge capped at 2400 px), then `imagetracerjs`
-  (up to 24 colours) runs in a worker thread, one trace at a time per
-  process (a second upload from the same user gets a `busy` answer while
-  one is running). A trace that takes longer than five minutes is
-  stopped; finished results are kept for fifteen minutes and then
-  dropped.
+  rotation applied, a median denoise pass at native size, small images
+  enlarged to 1200 px on the long side, larger ones capped at 2400 px),
+  then `imagetracerjs` (up to 24 colours) runs in a worker thread, one
+  trace at a time per process (a second upload from the same user gets a
+  `busy` answer while one is running). A trace that takes longer than
+  five minutes is stopped; finished results are kept for fifteen minutes
+  and then dropped.
 - **Downloads** are built from the traced shapes by `lib/vector.js`:
   SVG paths with `fill-rule="evenodd"`, and an EPSF-3.0 PostScript file
   with the same shapes (quadratic curves become cubic ones).
@@ -29,14 +30,17 @@ offers the result as **SVG** and **EPS**, named after the image.
 
 - `public/index.html` — the one screen; `public/app.js` wires it
 - `server.js` — auth, upload/trace/poll API, demo route
-- `lib/vector.js` — tracedata → SVG/EPS writers; `lib/trace-worker.js` —
-  the tracing worker; `lib/demo.js` — the staging demo shapes
+- `lib/prepare.js` — the tuned tracer options and the sharp decode
+  (denoise, resize); `lib/vector.js` — tracedata → SVG/EPS writers;
+  `lib/trace-worker.js` — the tracing worker; `lib/demo.js` — the
+  staging demo shapes
 - `styles/tailwind-input.css` + `tailwind.config.js` — the design kit
   (`npm run build` compiles `public/tailwind.css`)
 
 ## Tests
 
-`npm test` runs the SVG/EPS writer tests (`test/vector.test.js`).
+`npm test` runs the SVG/EPS writer tests plus the decode and tracer
+option tests (`test/vector.test.js`).
 The screens in `dapp.json` are checked by the platform.
 
 Both declared checks set `allowConsoleErrors`: the centrally hosted
