@@ -162,13 +162,18 @@ const MAX_UPLOAD = 30 * 1024 * 1024; // 30 MB
 const TRACE_COLORS = 24; // the palette the tracer quantises down to
 const TRACE_TIMEOUT_MS = 5 * 60 * 1000; // give up on a stuck trace
 const RESULT_TTL_MS = 15 * 60 * 1000; // ready results expire after this
+// The base trace options. The palette itself is not set here: the worker
+// builds it from the image (lib/palette.js) — the tracer's own colour
+// sampling misses small areas' colours and its k-means passes shift every
+// colour, so `pal` comes from the histogram instead. `colorquantcycles` is
+// set to 1 there too for the same reason. (`colorsampling` is dropped since
+// the built palette replaces it; the old `blursize` was never a real option
+// of this tracer and did nothing.)
 const TRACE_OPTIONS = {
   numberofcolors: TRACE_COLORS,
   ltres: 1,
   qtres: 1,
   pathomit: 8,
-  colorsampling: 2,
-  blursize: 0,
   rightangleenhance: true,
 };
 
