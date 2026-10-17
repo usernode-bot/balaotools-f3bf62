@@ -154,34 +154,21 @@ app.use((req, res, next) => {
 
 // ---------------------------------------------------------------------------
 // Image tracing. An upload is decoded with sharp immediately, then traced in
-// a worker thread (the tracer is synchronous and can take minutes), one at a
-// time, FIFO. Results live in memory, belong to the user who uploaded them,
-// and expire.
+// a worker thread (the engine is synchronous WASM), one at a time, FIFO.
+// Results live in memory, belong to the user who uploaded them, and expire.
 // ---------------------------------------------------------------------------
 
 const MAX_UPLOAD = 30 * 1024 * 1024; // 30 MB
-const TRACE_COLORS = 24; // the palette the tracer quantises down to
 const TRACE_TIMEOUT_MS = 5 * 60 * 1000; // give up on a stuck trace
 const RESULT_TTL_MS = 15 * 60 * 1000; // ready results expire after this
-// The base trace options. The palette itself is not set here: the worker
-// builds it from the image (lib/palette.js) — the tracer's own colour
-// sampling misses small areas' colours and its k-means passes shift every
-// colour, so `pal` comes from the histogram instead. `colorquantcycles` is
-// set to 1 there too for the same reason. (`colorsampling` is dropped since
-// the built palette replaces it; the old `blursize` was never a real option
-// of this tracer and did nothing.)
-const TRACE_OPTIONS = {
-  numberofcolors: TRACE_COLORS,
-  ltres: 1,
-  qtres: 1,
-  pathomit: 8,
-  rightangleenhance: true,
-};
+// Trace options live with the engine (lib/vtrace.js for the flat path,
+// lib/photo.js for photos); the worker gets pixels plus the photo routing
+// decision made below.
 
 const jobs = new Map(); // id -> job
 const queue = []; // job ids waiting for the single worker slot
 
-// sharp's raw pixel output -> ImageTracer's imagedata (flat RGBA).
+// sharp's raw pixel output -> the tracer's imagedata (flat RGBA).
 function toImagedata(buffer, width, height) {
   return { width, height, data: new Uint8Array(buffer) };
 }
@@ -191,7 +178,9 @@ function toImagedata(buffer, width, height) {
 // for photo-like images, which are classified from that decode and then
 // downscaled far further (photos traced this size posterise into hundreds of
 // smooth shapes; traced at full size they come out as tens of thousands of
-// jagged per-pixel boxes).
+// jagged per-pixel boxes). The downscale uses sharp's lanczos3 kernel, and a
+// light blur rides on it so sensor noise and fine texture melt into smooth
+// gradients before the engine clusters the pixels.
 async function decode(body) {
   const meta = await sharp(body).metadata();
   const swap = meta.orientation >= 5 && meta.orientation <= 8;
@@ -215,6 +204,7 @@ async function decode(body) {
       raw: { width: info.width, height: info.height, channels: 4 },
     })
       .resize(PHOTO_MAX_SIDE, PHOTO_MAX_SIDE, { fit: 'inside' })
+      .blur(2)
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -280,7 +270,7 @@ function pump() {
   });
   worker.postMessage({
     imagedata: job.imagedata,
-    options: job.photo ? { photo: true } : TRACE_OPTIONS,
+    photo: job.photo,
   });
 }
 

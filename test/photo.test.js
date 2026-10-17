@@ -2,14 +2,13 @@
 
 // The photo pipeline: how an image is routed (photo-like vs flat), the
 // options the photo path traces with, and what that does to a real trace
-// through imagetracerjs — the mosaic-of-pixel-boxes failure the flat path
-// shows on photographs.
+// through the engine — the mosaic-of-pixel-boxes failure the flat path shows
+// on photographs.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const sharp = require('sharp');
-const { isPhoto, tracePhoto, photoOptions, backdrop, hasTransparency, distinctColors } = require('../lib/photo');
-const { countShapes } = require('../lib/vector');
+const { isPhoto, tracePhoto, photoOptions, distinctColors } = require('../lib/photo');
 
 // A smooth-gradient image, like any photograph: each channel ramps across
 // the whole canvas, so almost every pixel is a slightly different colour.
@@ -67,46 +66,57 @@ test('flat art saved as JPEG stays on the flat path', async () => {
   assert.equal(isPhoto(imgd), false);
 });
 
-test('photoOptions trade fidelity of edges for smooth contours', () => {
+test('photoOptions trace coarsely with the histogram palette', () => {
   const imgd = gradientImage(64, 48);
   const options = photoOptions(imgd);
-  // Looser curve fitting than the flat path, right-angle snapping off, and
-  // a selective blur so smooth gradients flatten before tracing.
-  assert.equal(options.rightangleenhance, false);
-  assert.ok(options.ltres > 1 && options.qtres > 1);
-  assert.ok(options.blurradius > 0);
-  // The palette is built from the pixels, one quantisation pass.
-  assert.equal(options.colorquantcycles, 1);
-  assert.equal(options.pal.length, options.numberofcolors);
+  // Coarse clustering and curve simplification, so noise merges into its
+  // surrounding region and contours stay smooth.
+  assert.equal(options.mode, 'spline');
+  assert.ok(options.filterSpeckle > 10);
+  assert.ok(options.layerDifference > 10);
+  assert.ok(options.simplify > 0);
+  // The palette is built from the pixels, capped at the photo colour count.
+  assert.ok(Array.isArray(options.palette));
+  assert.ok(options.palette.length > 0);
+  assert.ok(options.palette.length <= 32);
 });
 
-test('a photo-like image traces into few smooth shapes, not a mosaic', async () => {
+test('a photo-like image traces into few smooth shapes, not a mosaic', () => {
   // A photo-sized gradient image traced through the photo path. The flat
   // path on the same pixels produces step art: a shape (or a hole) per
   // quantisation band boundary. The photo path must stay two orders of
   // magnitude below that and follow contours with curves.
   const grad = gradientImage(512, 384);
   const shapes = tracePhoto(grad);
-  const n = countShapes(shapes);
+  const n = shapes.reduce((acc, s) => acc + s.subpaths.length, 0);
   assert.ok(n > 0);
-  assert.ok(n < 400, 'expected a few dozen shapes, got ' + n);
-  // Smooth: quadratic curves, not pixel-stair segments.
-  const quadSubpaths = shapes.reduce((acc, s) => acc +
-    s.subpaths.reduce((a, sub) => a + sub.filter((op) => op.op === 'Q').length, 0), 0);
-  assert.ok(quadSubpaths > 0, 'expected curved subpaths, got straight lines only');
+  assert.ok(n < 400, 'expected few shapes, got ' + n);
+  // Smooth: cubic curves, not pixel-stair segments.
+  const curveOps = shapes.reduce((acc, s) => acc +
+    s.subpaths.reduce((a, sub) => a + sub.filter((op) => op.op === 'C').length, 0), 0);
+  assert.ok(curveOps > 0, 'expected curved subpaths, got straight lines only');
 });
 
-test('the photo backdrop is opaque when the image is, absent when not', () => {
-  const opaque = gradientImage(32, 32);
-  assert.equal(hasTransparency(opaque), false);
-  const bg = backdrop(opaque);
-  // Full-canvas rect in the dominant colour: the first sampled pixel's.
-  assert.deepEqual(bg.rgb, [0, 0, 0]);
-  assert.deepEqual(bg.subpaths[0][0].pts, [0, 0]);
-  assert.deepEqual(bg.subpaths[0][1].pts, [32, 0]);
-  // One transparent pixel flips the image, and its backdrop would fill the
-  // see-through area with colour, so there is none.
-  const withHole = gradientImage(32, 32);
-  withHole.data[(16 * 32 + 16) * 4 + 3] = 64;
-  assert.equal(hasTransparency(withHole), true);
+test('a noisy photo-like image keeps detail without turning to mosaic', () => {
+  // A gradient plus per-pixel noise, the way a camera's sensor output looks
+  // before JPEG: enough distinct colours to route as a photo, enough texture
+  // that clustering has real regions to find. The photo path must keep the
+  // structure (more than the single region a bare gradient collapses to)
+  // while staying far under mosaic counts.
+  const w = 512, h = 384;
+  const base = gradientImage(w, h);
+  let seed = 12345;
+  const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let i = 0; i < w * h; i++) {
+    base.data[i * 4] = Math.max(0, Math.min(255, base.data[i * 4] + Math.round((rand() - 0.5) * 60)));
+    base.data[i * 4 + 1] = Math.max(0, Math.min(255, base.data[i * 4 + 1] + Math.round((rand() - 0.5) * 60)));
+    base.data[i * 4 + 2] = Math.max(0, Math.min(255, base.data[i * 4 + 2] + Math.round((rand() - 0.5) * 60)));
+  }
+  const shapes = tracePhoto(base);
+  const n = shapes.reduce((acc, s) => acc + s.subpaths.length, 0);
+  assert.ok(n > 1, 'texture should produce regions, got ' + n);
+  assert.ok(n < 2000, 'expected hundreds, not a mosaic, got ' + n);
+  const curveOps = shapes.reduce((acc, s) => acc +
+    s.subpaths.reduce((a, sub) => a + sub.filter((op) => op.op === 'C').length, 0), 0);
+  assert.ok(curveOps > 0, 'expected curved subpaths');
 });

@@ -97,9 +97,11 @@ tables you've marked private), etc.
 
 Turn images into vector files the group can download. One screen: pick an
 image (PNG/JPEG/WebP/GIF, up to 30 MB), the server traces it into coloured
-shapes (sharp + imagetracerjs, up to 24 colours, one trace at a time, five
-minute cap), and the result downloads as SVG and EPS named after the
-image. The last 12 conversions are kept on-device in IndexedDB — there is
+shapes (sharp + vtracer via `lib/vtrace.js`; photos are downscaled and
+lightly blurred first, flat art gets a histogram palette so rare exact
+colours survive, one trace at a time, five minute cap), and the result
+downloads as SVG and EPS named after the image. The last 12 conversions
+are kept on-device in IndexedDB — there is
 no server-side image storage, only a fifteen-minute in-memory result
 cache. `/?demo=1` (staging only) shows six sample conversions from
 `lib/demo.js`.
