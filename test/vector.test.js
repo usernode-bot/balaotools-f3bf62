@@ -6,7 +6,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const sharp = require('sharp');
+const ImageTracer = require('imagetracerjs');
 const { fromTracedata, toSvg, toEps, countShapes } = require('../lib/vector');
+const { TRACE_OPTIONS, decode } = require('../lib/prepare');
 
 // A 4x4 red square (0,0)-(4,4) with a 2x2 hole in the middle, as
 // ImageTracer.imagedataToTracedata reports it: one non-hole path whose
@@ -103,4 +106,89 @@ test('a quadratic segment becomes a cubic in EPS and stays a Q in SVG', () => {
   const eps = toEps([shape], 4, 4, 4, 4, 'q');
   // Q -> cubic: inner controls two thirds of the way to the control point.
   assert.ok(eps.includes('5.333 1.333 5.333 2.667 4.000 4.000 curveto'));
+});
+// ---------------------------------------------------------------------------
+// Decode and tracer options (lib/prepare.js): the tuning and the sharp
+// preprocessing that clean the picture up before it is traced.
+// ---------------------------------------------------------------------------
+
+// A PNG of the given size and colour, built with sharp.
+function png(width, height, r, g, b, extras = []) {
+  return sharp({ create: { width, height, channels: 3, background: { r, g, b } } })
+    .png()
+    .composite(extras)
+    .toBuffer();
+}
+
+test('TRACE_OPTIONS are tuned and the colour cap is kept', () => {
+  assert.equal(TRACE_OPTIONS.numberofcolors, 24);
+  assert.equal(TRACE_OPTIONS.ltres, 0.75);
+  assert.equal(TRACE_OPTIONS.qtres, 0.75);
+  assert.equal(TRACE_OPTIONS.pathomit, 6);
+  assert.equal(TRACE_OPTIONS.colorsampling, 2);
+  assert.equal(TRACE_OPTIONS.linefilter, true);
+});
+
+test('a small image is enlarged to 1200 on the long side before tracing', async () => {
+  const body = await png(100, 50, 255, 255, 255);
+  const d = await decode(body);
+  assert.equal(d.traceW, 1200);
+  assert.equal(d.traceH, 600);
+  // The downloaded file keeps the original size.
+  assert.equal(d.outW, 100);
+  assert.equal(d.outH, 50);
+  assert.equal(d.imagedata.data.length, 1200 * 600 * 4);
+});
+
+test('a mid-size image is traced at its own size', async () => {
+  const d = await decode(await png(1600, 800, 255, 255, 255));
+  assert.equal(d.traceW, 1600);
+  assert.equal(d.traceH, 800);
+});
+
+test('a large image is still capped at 2400 on the long side', async () => {
+  const d = await decode(await png(3000, 1500, 255, 255, 255));
+  assert.equal(d.traceW, 2400);
+  assert.equal(d.traceH, 1200);
+  assert.equal(d.outW, 3000);
+  assert.equal(d.outH, 1500);
+});
+
+test('an isolated speck is removed by the denoise, not traced', async () => {
+  const dot = await sharp({ create: { width: 1, height: 1, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+    .png().toBuffer();
+  const body = await sharp({ create: { width: 64, height: 64, channels: 3, background: { r: 255, g: 0, b: 0 } } })
+    .png()
+    .composite([{ input: dot, left: 32, top: 32 }])
+    .toBuffer();
+  const d = await decode(body);
+  // 64 px enlarged to 1200: original pixel (32,32) lands at (600,600).
+  const i = (600 * d.imagedata.width + 600) * 4;
+  const p = d.imagedata.data;
+  assert.ok(p[i] > 200 && p[i + 1] < 60 && p[i + 2] < 60,
+    `expected red at (600,600), got ${p[i]},${p[i + 1]},${p[i + 2]}`);
+});
+
+test('the tuned options trace a circle into a few smooth shapes', () => {
+  // 300x300 white imagedata with one filled red circle, traced in-process
+  // with the same options the worker uses.
+  const w = 300, h = 300, r = 100;
+  const data = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const inside = (x - 150) * (x - 150) + (y - 150) * (y - 150) <= r * r;
+      data[i] = inside ? 228 : 255;
+      data[i + 1] = inside ? 72 : 255;
+      data[i + 2] = inside ? 59 : 255;
+      data[i + 3] = 255;
+    }
+  }
+  const td = ImageTracer.imagedataToTracedata({ width: w, height: h, data }, TRACE_OPTIONS);
+  const shapes = fromTracedata(td);
+  assert.ok(countShapes(shapes) <= 4, `expected at most 4 shapes, got ${countShapes(shapes)}`);
+  const red = shapes.find(s => s.rgb[0] > 180 && s.rgb[1] < 120 && s.rgb[2] < 120);
+  assert.ok(red, 'expected one near-red shape');
+  const hasCurve = red.subpaths.some(sp => sp.some(seg => seg.op === 'Q'));
+  assert.ok(hasCurve, 'expected the circle outline to use quadratic curves');
 });
