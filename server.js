@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const sharp = require('sharp');
 const { toSvg, toEps, countShapes } = require('./lib/vector');
+const { isPhoto, PHOTO_MAX_SIDE } = require('./lib/photo');
 const { demoConversions } = require('./lib/demo');
 
 const app = express();
@@ -186,7 +187,11 @@ function toImagedata(buffer, width, height) {
 }
 
 // The trace dims and the display dims differ twice over: EXIF rotation can
-// swap the axes, and the long side is capped at 2400 before tracing.
+// swap the axes, and the long side is capped at 2400 before tracing — except
+// for photo-like images, which are classified from that decode and then
+// downscaled far further (photos traced this size posterise into hundreds of
+// smooth shapes; traced at full size they come out as tens of thousands of
+// jagged per-pixel boxes).
 async function decode(body) {
   const meta = await sharp(body).metadata();
   const swap = meta.orientation >= 5 && meta.orientation <= 8;
@@ -198,13 +203,28 @@ async function decode(body) {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  return {
+  let trace = {
     imagedata: toImagedata(data, info.width, info.height),
     traceW: info.width,
     traceH: info.height,
-    outW,
-    outH,
   };
+  let photo = false;
+  if (isPhoto(trace.imagedata)) {
+    photo = true;
+    const downscaled = await sharp(data, {
+      raw: { width: info.width, height: info.height, channels: 4 },
+    })
+      .resize(PHOTO_MAX_SIDE, PHOTO_MAX_SIDE, { fit: 'inside' })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    trace = {
+      imagedata: toImagedata(downscaled.data, downscaled.info.width, downscaled.info.height),
+      traceW: downscaled.info.width,
+      traceH: downscaled.info.height,
+    };
+  }
+  return { photo, ...trace, outW, outH };
 }
 
 let running = null; // the job being traced right now, if any
@@ -260,7 +280,7 @@ function pump() {
   });
   worker.postMessage({
     imagedata: job.imagedata,
-    options: TRACE_OPTIONS,
+    options: job.photo ? { photo: true } : TRACE_OPTIONS,
   });
 }
 
@@ -308,6 +328,7 @@ app.post('/api/trace', express.raw({ type: 'application/octet-stream', limit: MA
     status: 'queued',
     createdAt: req.now,
     finishedAt: null,
+    photo: decoded.photo,
     imagedata: decoded.imagedata,
     traceW: decoded.traceW,
     traceH: decoded.traceH,
