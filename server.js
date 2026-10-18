@@ -5,8 +5,9 @@ const crypto = require('crypto');
 const { Worker } = require('worker_threads');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const sharp = require('sharp');
 const { toSvg, toEps, countShapes } = require('./lib/vector');
-const { TRACE_OPTIONS, decode } = require('./lib/prepare');
+const { isPhoto, PHOTO_MAX_SIDE } = require('./lib/photo');
 const { demoConversions } = require('./lib/demo');
 
 const app = express();
@@ -153,21 +154,68 @@ app.use((req, res, next) => {
 
 // ---------------------------------------------------------------------------
 // Image tracing. An upload is decoded with sharp immediately, then traced in
-// a worker thread (the tracer is synchronous and can take minutes), one at a
-// time, FIFO. Results live in memory, belong to the user who uploaded them,
-// and expire.
+// a worker thread (the engine is synchronous WASM), one at a time, FIFO.
+// Results live in memory, belong to the user who uploaded them, and expire.
 // ---------------------------------------------------------------------------
 
 const MAX_UPLOAD = 30 * 1024 * 1024; // 30 MB
 const TRACE_TIMEOUT_MS = 5 * 60 * 1000; // give up on a stuck trace
 const RESULT_TTL_MS = 15 * 60 * 1000; // ready results expire after this
-
-// TRACE_OPTIONS and decode() (the tuned tracer options and the sharp
-// preprocessing) live in lib/prepare.js so the tests can reach them
-// without starting the server.
+// Trace options live with the engine (lib/vtrace.js for the flat path,
+// lib/photo.js for photos); the worker gets pixels plus the photo routing
+// decision made below.
 
 const jobs = new Map(); // id -> job
 const queue = []; // job ids waiting for the single worker slot
+
+// sharp's raw pixel output -> the tracer's imagedata (flat RGBA).
+function toImagedata(buffer, width, height) {
+  return { width, height, data: new Uint8Array(buffer) };
+}
+
+// The trace dims and the display dims differ twice over: EXIF rotation can
+// swap the axes, and the long side is capped at 2400 before tracing — except
+// for photo-like images, which are classified from that decode and then
+// downscaled far further (photos traced this size posterise into hundreds of
+// smooth shapes; traced at full size they come out as tens of thousands of
+// jagged per-pixel boxes). The downscale uses sharp's lanczos3 kernel, and a
+// light blur rides on it so sensor noise and fine texture melt into smooth
+// gradients before the engine clusters the pixels.
+async function decode(body) {
+  const meta = await sharp(body).metadata();
+  const swap = meta.orientation >= 5 && meta.orientation <= 8;
+  const outW = swap ? meta.height : meta.width;
+  const outH = swap ? meta.width : meta.height;
+  const { data, info } = await sharp(body)
+    .rotate()
+    .resize(2400, 2400, { fit: 'inside', withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let trace = {
+    imagedata: toImagedata(data, info.width, info.height),
+    traceW: info.width,
+    traceH: info.height,
+  };
+  let photo = false;
+  if (isPhoto(trace.imagedata)) {
+    photo = true;
+    const downscaled = await sharp(data, {
+      raw: { width: info.width, height: info.height, channels: 4 },
+    })
+      .resize(PHOTO_MAX_SIDE, PHOTO_MAX_SIDE, { fit: 'inside' })
+      .blur(2)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    trace = {
+      imagedata: toImagedata(downscaled.data, downscaled.info.width, downscaled.info.height),
+      traceW: downscaled.info.width,
+      traceH: downscaled.info.height,
+    };
+  }
+  return { photo, ...trace, outW, outH };
+}
 
 let running = null; // the job being traced right now, if any
 
@@ -222,7 +270,7 @@ function pump() {
   });
   worker.postMessage({
     imagedata: job.imagedata,
-    options: TRACE_OPTIONS,
+    photo: job.photo,
   });
 }
 
@@ -270,6 +318,7 @@ app.post('/api/trace', express.raw({ type: 'application/octet-stream', limit: MA
     status: 'queued',
     createdAt: req.now,
     finishedAt: null,
+    photo: decoded.photo,
     imagedata: decoded.imagedata,
     traceW: decoded.traceW,
     traceH: decoded.traceH,
