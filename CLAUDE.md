@@ -116,8 +116,9 @@ change follows it, and updates it when a request changes the look on purpose.
   the vector pane only.
 - **Signature element:** the side-by-side compare — the original on a
   pixel grid, the vector on a checkerboard with blue anchor-point squares
-  along its paths (the toggleable overlay); the tracing state draws the
-  same dashes.
+  along its paths (the toggleable overlay: on by default for flat art, off
+  when a result has more than 100 shapes so it never buries a photo); the
+  tracing state draws the same dashes.
 - **Type scale:** `text-title`, `text-heading`, `text-body`, `text-small`
   _(change their sizes in `tailwind.config.js` if you must, not their number)_
 

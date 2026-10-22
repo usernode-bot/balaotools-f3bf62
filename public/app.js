@@ -29,6 +29,7 @@
     errorChange: $('error-change'),
     optsRow: $('opts-row'),
     anchorSwitch: $('anchor-switch'),
+    anchorNote: $('anchor-note'),
     downloads: $('downloads'),
     dlSvg: $('dl-svg'),
     dlEps: $('dl-eps'),
@@ -48,6 +49,11 @@
     'image/gif': 'GIF',
   };
   const POLL_MS = 1500;
+
+  // A photo traces into hundreds of shapes, and the overlay's dots would bury
+  // it, so the switch starts off for a result that detailed. Flat art (a logo
+  // or a drawing, a handful of shapes) keeps the overlay on.
+  const MANY_SHAPES = 100;
 
   // The iframe adds ?token=…; forward it on every API call.
   const token = new URLSearchParams(location.search).get('token') || '';
@@ -180,6 +186,7 @@
     el.fileMeta.textContent = current.metaText;
     showOriginal();
     el.vecMeta.textContent = current.shapes + ' shapes';
+    setDefaultAnchors();
     renderVector();
     setState('ready');
   }
@@ -390,9 +397,34 @@
   }
 
   // ── The anchor switch and the downloads ──────────────────────────────────
+  function renderAnchorNote() {
+    const shapes = current ? Number(current.shapes) || 0 : 0;
+    if (shapes <= MANY_SHAPES) {
+      el.anchorNote.textContent = anchorsOn
+        ? 'On. Best for flat art like logos and drawings.'
+        : 'Off. Turn it on to see the anchor points on this result.';
+    } else {
+      el.anchorNote.textContent = anchorsOn
+        ? 'On. This detailed result can be hard to see under the anchor points.'
+        : 'Off for this detailed result, so the anchor points do not cover it. Turn on to inspect.';
+    }
+  }
+
+  function setAnchors(on) {
+    anchorsOn = on;
+    el.anchorSwitch.setAttribute('aria-checked', String(on));
+    renderAnchorNote();
+  }
+
+  // Every result starts from the default for its own shape count, so a photo
+  // opens clean and flat art opens with the anchors it was drawn for.
+  function setDefaultAnchors() {
+    const shapes = current ? Number(current.shapes) || 0 : 0;
+    setAnchors(shapes <= MANY_SHAPES);
+  }
+
   el.anchorSwitch.addEventListener('click', () => {
-    anchorsOn = !anchorsOn;
-    el.anchorSwitch.setAttribute('aria-checked', String(anchorsOn));
+    setAnchors(!anchorsOn);
     renderVector();
   });
 

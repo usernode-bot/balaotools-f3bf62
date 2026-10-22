@@ -179,8 +179,11 @@
 
       <div class="opts" id="opts-row" hidden>
         <svg class="ico" viewBox="0 0 24 24" style="color:rgb(var(--accent))" aria-hidden="true"><path d="M4 18C8 6 16 6 20 18"/><rect x="2" y="16" width="4" height="4"/><rect x="18" y="16" width="4" height="4"/><path d="M12 9V4"/><circle cx="12" cy="3" r="1"/></svg>
-        <span class="text-body grow">Show anchor points</span>
-        <button class="switch" id="anchor-switch" role="switch" aria-checked="true" aria-label="Show anchor points"></button>
+        <div class="opts-text grow">
+          <span class="text-body" style="font-weight:500">Show anchor points</span>
+          <p class="text-small muted" id="anchor-note"></p>
+        </div>
+        <button class="switch" id="anchor-switch" role="switch" aria-checked="true" aria-label="Show anchor points" aria-describedby="anchor-note"></button>
       </div>
 
       <div class="downloads" id="downloads" hidden>
