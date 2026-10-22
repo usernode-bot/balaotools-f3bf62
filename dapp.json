@@ -35,6 +35,17 @@
       ],
       "expectText": "balloon-logo.png",
       "allowConsoleErrors": true
+    },
+    {
+      "id": "demo.anchor-label",
+      "name": "Flat-art result labels the anchor switch",
+      "path": "/?demo=1",
+      "impact": [
+        "public/**",
+        "styles/**"
+      ],
+      "expectText": "Best for flat art like logos and drawings.",
+      "allowConsoleErrors": true
     }
   ],
   "secrets": [],

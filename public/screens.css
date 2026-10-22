@@ -131,6 +131,10 @@ header {display:flex;flex-direction:column;gap:2px;padding:0 4px}
 
 .opts {display:flex;align-items:center;gap:12px;min-height:44px;padding:0 4px}
 
+.opts .ico {flex:none}
+
+.opts-text {display:flex;flex-direction:column;gap:2px;min-width:0}
+
 .downloads {display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
 /* Download confirmation: a quiet pill at the bottom of the screen, shown for

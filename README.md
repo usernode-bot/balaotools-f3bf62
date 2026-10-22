@@ -22,7 +22,7 @@ offers the result as **SVG** and **EPS**, named after the image.
 - **The recent list** (last 12 conversions) lives on this device in
   IndexedDB — nothing about your images is stored server-side beyond the
   fifteen-minute result cache.
-- **Staging demo**: `/?demo=1` shows six sample conversions with the
+- **Staging demo**: `/?demo=1` shows seven sample conversions with the
   demo note above the list. `server.js` injects the samples into the
   page itself while `IS_STAGING` (production never sees the route);
   nothing is stored and nothing ships in the production HTML.
